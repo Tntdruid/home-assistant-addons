@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.2-webui2
+
+- Web UI: readable metrics page (hide empty sections, tables for nested metrics, parse rate)
+- Web UI: fix overview layout gap
+
 ## 1.8.2-webui1
 
 - Add web UI: overview dashboard, decisions (add/remove), alerts, hub management, bouncers & machines, metrics

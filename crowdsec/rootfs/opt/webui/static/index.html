@@ -37,7 +37,8 @@ section { display: none; } section.active { display: block; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .stat .value { font-size: 28px; font-weight: 650; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
 h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .toolbar .spacer { flex: 1; }
@@ -55,7 +56,7 @@ th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--lin
 th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--card); position: sticky; top: 0; }
 tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: var(--hover); }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
 .muted { color: var(--muted); }
 .chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
@@ -376,22 +377,58 @@ $("#bouncer-form").addEventListener("submit", async e => {
 $("#key-copy").addEventListener("click", () => navigator.clipboard.writeText($("#key-value").textContent).then(() => toast("Copied")));
 
 // ----------------------------------------------------------------- metrics
-async function loadMetrics() {
-  const data = await api("metrics");
-  const parts = Object.entries(data || {}).map(([section, val]) => {
-    const rows = val && typeof val === "object" && !Array.isArray(val) ? Object.entries(val) : [];
-    const tabular = rows.length && rows.every(([, v]) => v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => typeof x !== "object"));
-    let body;
-    if (tabular) {
-      const keys = [...new Set(rows.flatMap(([, v]) => Object.keys(v)))];
-      body = table(rows.map(([k, v]) => ({ _k: k, ...v })), [{ label: "", html: r => `<span class="mono">${esc(r._k)}</span>` },
-        ...keys.map(k => ({ label: k, key: k, num: true }))]);
-    } else {
-      body = `<pre class="mono" style="overflow:auto;margin:0">${esc(JSON.stringify(val, null, 2))}</pre>`;
+const isObj = v => v && typeof v === "object" && !Array.isArray(v);
+const isScalar = v => v === null || typeof v !== "object";
+const isEmpty = v => v == null || v === "" || (Array.isArray(v) && (!v.length || v.every(isEmpty))) || (isObj(v) && Object.values(v).every(isEmpty));
+const fmtNum = v => typeof v === "number" ? v.toLocaleString() : (v === undefined || v === null || v === "" ? '<span class="muted">–</span>' : esc(v));
+const titleCase = s => String(s).replace(/[-_]/g, " ").replace(/^\w/, c => c.toUpperCase());
+const pctBar = p => `<span style="display:inline-flex;align-items:center;gap:6px"><span class="track" style="display:inline-block;width:60px;height:6px;background:var(--chip);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:${p}%;background:${p >= 50 ? "var(--ok)" : "var(--warn)"}"></span></span>${p}%</span>`;
+
+function metricsTable(obj, firstLabel) {
+  const rows = Object.entries(obj).filter(([, v]) => !isEmpty(v));
+  // flat map of name -> number: two-column table, largest first
+  if (rows.every(([, v]) => isScalar(v))) {
+    rows.sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0));
+    return table(rows.map(([k, v]) => ({ k, v })), [
+      { label: firstLabel, html: r => `<span class="mono">${esc(r.k)}</span>` },
+      { label: "Count", html: r => fmtNum(r.v), num: true }]);
+  }
+  // map of name -> {col: number}: matrix table
+  if (rows.every(([, v]) => isObj(v) && Object.values(v).every(isScalar))) {
+    const keys = [...new Set(rows.flatMap(([, v]) => Object.keys(v)))];
+    const cols = [{ label: firstLabel, html: r => `<span class="mono">${esc(r._k)}</span>` },
+      ...keys.map(k => ({ label: titleCase(k), html: r => fmtNum(r[k]), num: true }))];
+    if (keys.includes("reads") && (keys.includes("parsed") || keys.includes("unparsed"))) {
+      cols.push({ label: "Parsed", num: true, html: r => {
+        const total = Number(r.reads) || 0, parsed = Number(r.parsed) || 0;
+        return total ? pctBar(Math.round(parsed / total * 100)) : fmtNum(null);
+      } });
     }
-    return `<details open class="card" style="margin-bottom:12px"><summary><h2 style="display:inline">${esc(section)}</h2></summary><div style="margin-top:8px">${body}</div></details>`;
-  });
-  $("#metrics-body").innerHTML = parts.join("") || `<div class="card empty">No metrics available</div>`;
+    return table(rows.map(([k, v]) => ({ _k: k, ...v })), cols);
+  }
+  return null;
+}
+
+function renderMetric(val, label = "Name") {
+  if (isScalar(val)) return `<div>${fmtNum(val)}</div>`;
+  if (Array.isArray(val)) return `<pre class="mono" style="overflow:auto;margin:0">${esc(JSON.stringify(val, null, 2))}</pre>`;
+  const flat = metricsTable(val, label);
+  if (flat) return flat;
+  // nested: one sub-section per key
+  return Object.entries(val).filter(([, v]) => !isEmpty(v)).map(([k, v]) =>
+    `<h3 style="font-size:13px;margin:12px 0 6px;color:var(--muted)">${esc(titleCase(k))}</h3>${renderMetric(v)}`).join("");
+}
+
+async function loadMetrics() {
+  const data = await api("metrics") || {};
+  const entries = Object.entries(data);
+  const filled = entries.filter(([, v]) => !isEmpty(v));
+  const empty = entries.filter(([, v]) => isEmpty(v)).map(([k]) => k);
+  const firstLabel = { acquisition: "Source", alerts: "Reason", parsers: "Parser", scenarios: "Scenario", buckets: "Scenario", "lapi-bouncer": "Bouncer", "lapi-machine": "Machine", decisions: "Reason" };
+  const parts = filled.map(([section, val]) =>
+    `<details open class="card" style="margin-bottom:12px"><summary><h2 style="display:inline">${esc(titleCase(section))}</h2></summary><div style="margin-top:8px">${renderMetric(val, firstLabel[section] || "Name")}</div></details>`);
+  if (empty.length) parts.push(`<p class="muted" style="font-size:12px">No data yet for: ${empty.map(esc).join(", ")}</p>`);
+  $("#metrics-body").innerHTML = filled.length ? parts.join("") : `<div class="card empty">No metrics available yet</div>`;
 }
 
 // ---------------------------------------------------------------- terminal
