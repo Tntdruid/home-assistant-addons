@@ -61,6 +61,6 @@ schema:
   disable_online_api: bool
 map:
   - config:rw
-panel_icon: mdi:console-network
-panel_title: Crowdsec Terminal
+panel_icon: mdi:shield-lock-outline
+panel_title: CrowdSec
 journald: true
