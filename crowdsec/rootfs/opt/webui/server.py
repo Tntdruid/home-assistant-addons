@@ -281,6 +281,82 @@ def get_machines(_q):
     return as_list(cscli("machines", "list"))
 
 
+def v_allowlist_value(value):
+    """An allowlist entry is an IP or a CIDR range."""
+    return v_ip_or_range(value)[1]
+
+
+def v_expiration(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    if not re.match(r"^(\d+d)?(\d+h)?(\d+m)?$", value):
+        raise ApiError(400, "invalid expiration (use e.g. 7d, 24h, 30m)")
+    return value
+
+
+def get_allowlists(_q):
+    rows = []
+    for al in as_list(cscli("allowlists", "list")):
+        items = []
+        for item in as_list(al.get("items")):
+            exp = item.get("expiration") or ""
+            items.append({
+                "value": item.get("value"),
+                "comment": item.get("description", ""),
+                # zero time means "never expires"
+                "expiration": "" if exp.startswith("0001-01-01") else exp,
+                "created_at": item.get("created_at"),
+            })
+        rows.append({
+            "name": al.get("name"),
+            "description": al.get("description", ""),
+            "console_managed": bool(al.get("console_managed")),
+            "created_at": al.get("created_at"),
+            "items": items,
+        })
+    return rows
+
+
+def create_allowlist(body):
+    name = v_name(body.get("name"), "allowlist")
+    desc = str(body.get("description") or name).strip()
+    if not REASON_RE.match(desc):
+        raise ApiError(400, "invalid description")
+    return {"message": cscli("allowlists", "create", name, "-d", desc, as_json=False)}
+
+
+def delete_allowlist(body):
+    name = v_name(body.get("name"), "allowlist")
+    return {"message": cscli("allowlists", "delete", name, as_json=False)}
+
+
+def allowlist_add(body):
+    name = v_name(body.get("name"), "allowlist")
+    value = v_allowlist_value(body.get("value"))
+    args = ["allowlists", "add", name, value]
+    exp = v_expiration(body.get("expiration"))
+    if exp:
+        args += ["-e", exp]
+    comment = str(body.get("comment") or "").strip()
+    if comment:
+        if not REASON_RE.match(comment):
+            raise ApiError(400, "invalid comment")
+        args += ["-d", comment]
+    return {"message": cscli(*args, as_json=False)}
+
+
+def allowlist_remove(body):
+    name = v_name(body.get("name"), "allowlist")
+    value = v_allowlist_value(body.get("value"))
+    return {"message": cscli("allowlists", "remove", name, value, as_json=False)}
+
+
+def allowlist_check(body):
+    value = v_allowlist_value(body.get("value"))
+    return {"message": cscli("allowlists", "check", value, as_json=False)}
+
+
 def get_metrics(_q):
     return cscli("metrics") or {}
 
@@ -297,6 +373,7 @@ GET_ROUTES = {
     "/api/bouncers": get_bouncers,
     "/api/machines": get_machines,
     "/api/metrics": get_metrics,
+    "/api/allowlists": get_allowlists,
 }
 POST_ROUTES = {
     "/api/decisions/add": add_decision,
@@ -308,6 +385,11 @@ POST_ROUTES = {
     "/api/bouncers/add": add_bouncer,
     "/api/bouncers/delete": delete_bouncer,
     "/api/reload": post_reload,
+    "/api/allowlists/create": create_allowlist,
+    "/api/allowlists/delete": delete_allowlist,
+    "/api/allowlists/add": allowlist_add,
+    "/api/allowlists/remove": allowlist_remove,
+    "/api/allowlists/check": allowlist_check,
 }
 
 

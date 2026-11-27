@@ -23,6 +23,7 @@ The add-on ships a web UI (Home Assistant ingress) where you can:
 - add and remove decisions (ban / captcha an IP or range)
 - browse and delete alerts
 - install, remove and upgrade hub items (collections, parsers, scenarios, …) and reload CrowdSec
+- manage allowlists (IPs and ranges that are never banned, e.g. your own public IPv6 prefix)
 - add and delete bouncers (the API key is shown once), and list machines
 - view `cscli metrics`
 - open a web terminal in the container (the **Terminal** tab) for anything else, using `cscli` ([bouncers management](https://docs.crowdsec.net/docs/next/user_guides/bouncers_configuration) for example)

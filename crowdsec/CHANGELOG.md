@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2-webui3
+
+- Web UI: Allowlists tab (create/delete allowlists, add/remove IPs and ranges with optional expiration, check an IP)
+
 ## 1.8.2-webui2
 
 - Web UI: readable metrics page (hide empty sections, tables for nested metrics, parse rate)

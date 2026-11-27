@@ -82,6 +82,7 @@ details > summary { cursor: pointer; padding: 4px 0; }
   <nav id="tabs">
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="decisions">Decisions</button>
+    <button data-tab="allowlists">Allowlists</button>
     <button data-tab="alerts">Alerts</button>
     <button data-tab="hub">Hub</button>
     <button data-tab="bouncers">Bouncers &amp; machines</button>
@@ -120,6 +121,23 @@ details > summary { cursor: pointer; padding: 4px 0; }
       <input id="dec-filter" placeholder="Filter…">
     </form>
     <div id="decisions-table"></div>
+  </section>
+
+  <section id="allowlists">
+    <div class="toolbar">
+      <form id="al-create" class="toolbar" style="margin:0">
+        <input name="name" placeholder="New allowlist name" required>
+        <input name="description" placeholder="Description (optional)">
+        <button class="btn primary" type="submit">Create allowlist</button>
+      </form>
+      <span class="spacer"></span>
+      <form id="al-check" class="toolbar" style="margin:0">
+        <input name="value" placeholder="Check IP…" required>
+        <button class="btn" type="submit">Check</button>
+      </form>
+    </div>
+    <p class="muted" style="margin-top:0">IPs and ranges in an allowlist are never banned – use this for your own networks, including your public IPv6 prefix (private IPv4 ranges are already whitelisted).</p>
+    <div id="allowlists-body"></div>
   </section>
 
   <section id="alerts">
@@ -206,6 +224,7 @@ function ago(ts) {
   if (!ts) return "";
   const d = (Date.now() - new Date(ts).getTime()) / 1000;
   if (isNaN(d)) return esc(ts);
+  if (d < 5) return "just now";  // also covers small clock skew
   if (d < 60) return Math.round(d) + "s ago";
   if (d < 3600) return Math.round(d / 60) + "m ago";
   if (d < 86400) return Math.round(d / 3600) + "h ago";
@@ -286,6 +305,64 @@ $("#ban-form").addEventListener("submit", async e => {
 });
 $("#dec-filter").addEventListener("input", renderDecisions);
 $("#dec-all").addEventListener("change", loadDecisions);
+
+// -------------------------------------------------------------- allowlists
+async function loadAllowlists() {
+  const lists = await api("allowlists") || [];
+  if (!lists.length) {
+    $("#allowlists-body").innerHTML = `<div class="card empty">No allowlists yet – create one above</div>`;
+    return;
+  }
+  $("#allowlists-body").innerHTML = lists.map(al => {
+    const ro = al.console_managed;
+    const items = table(al.items, [
+      { label: "Value", html: r => `<span class="mono">${esc(r.value)}</span>` },
+      { label: "Comment", key: "comment" },
+      { label: "Expires", html: r => r.expiration ? `<span title="${esc(r.expiration)}">${esc(new Date(r.expiration).toLocaleString())}</span>` : '<span class="muted">never</span>' },
+      { label: "Added", html: r => ago(r.created_at) },
+      { label: "", html: r => ro ? "" : `<button class="btn small danger" data-al-remove="${esc(al.name)}" data-value="${esc(r.value)}">Remove</button>` },
+    ], "Empty – add an IP or range below");
+    const addForm = ro ? `<p class="muted" style="margin:8px 0 0">Managed by the CrowdSec console – edit it there.</p>` :
+      `<form class="toolbar al-add" data-name="${esc(al.name)}" style="margin:10px 0 0">
+        <input name="value" placeholder="IP or range, e.g. 2a01:db8:1:2::/64" required style="min-width:260px">
+        <select name="expiration"><option value="">never expires</option><option value="24h">24h</option><option value="7d">7 days</option><option value="30d">30 days</option></select>
+        <input name="comment" placeholder="Comment (optional)">
+        <button class="btn primary" type="submit">Add</button>
+      </form>`;
+    return `<div class="card" style="margin-bottom:12px">
+      <div class="toolbar"><h2 style="margin:0"><span class="mono">${esc(al.name)}</span></h2>
+        ${ro ? '<span class="chip">console</span>' : ""}<span class="muted">${esc(al.description)}</span>
+        <span class="spacer"></span>
+        ${ro ? "" : `<button class="btn small danger" data-al-delete="${esc(al.name)}">Delete allowlist</button>`}</div>
+      ${items}${addForm}</div>`;
+  }).join("");
+}
+$("#allowlists-body").addEventListener("click", async e => {
+  const t = e.target;
+  if (t.dataset.alRemove) {
+    t.disabled = true;
+    await run(() => api("allowlists/remove", { name: t.dataset.alRemove, value: t.dataset.value }), `Removed ${t.dataset.value}`);
+    loadAllowlists();
+  } else if (t.dataset.alDelete && confirm(`Delete allowlist "${t.dataset.alDelete}" and all its entries?`)) {
+    await run(() => api("allowlists/delete", { name: t.dataset.alDelete }), "Allowlist deleted");
+    loadAllowlists();
+  }
+});
+$("#allowlists-body").addEventListener("submit", async e => {
+  if (!e.target.classList.contains("al-add")) return;
+  e.preventDefault();
+  const body = { name: e.target.dataset.name, ...Object.fromEntries(new FormData(e.target)) };
+  if (await run(() => api("allowlists/add", body), `Added ${body.value}`)) loadAllowlists();
+});
+$("#al-create").addEventListener("submit", async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  if (await run(() => api("allowlists/create", body), `Allowlist ${body.name} created`)) { e.target.reset(); loadAllowlists(); }
+});
+$("#al-check").addEventListener("submit", async e => {
+  e.preventDefault();
+  await run(() => api("allowlists/check", { value: e.target.value.value }), r => r.message || "Not in any allowlist");
+});
 
 // ------------------------------------------------------------------ alerts
 let alerts = [];
@@ -438,7 +515,7 @@ function showTerminal() {
 }
 
 // -------------------------------------------------------------------- tabs
-const loaders = { overview: loadOverview, decisions: loadDecisions, alerts: loadAlerts, hub: loadHub, bouncers: loadBouncers, metrics: loadMetrics, terminal: showTerminal };
+const loaders = { overview: loadOverview, decisions: loadDecisions, allowlists: loadAllowlists, alerts: loadAlerts, hub: loadHub, bouncers: loadBouncers, metrics: loadMetrics, terminal: showTerminal };
 function show(tab) {
   state.tab = tab;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
