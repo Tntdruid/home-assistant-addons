@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.2-webui1
+
+- Add web UI: overview dashboard, decisions (add/remove), alerts, hub management, bouncers & machines, metrics
+- Web terminal kept as a tab in the UI
+
 ## 1.8.2
 
 - Bump crowdsec version to 1.8.2
