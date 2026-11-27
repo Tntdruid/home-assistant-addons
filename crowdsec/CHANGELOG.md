@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2-webui4
+
+- Web UI: rename computed metrics column to "Parse rate", deep-link to tabs (#decisions etc.)
+
 ## 1.8.2-webui3
 
 - Web UI: Allowlists tab (create/delete allowlists, add/remove IPs and ranges with optional expiration, check an IP)

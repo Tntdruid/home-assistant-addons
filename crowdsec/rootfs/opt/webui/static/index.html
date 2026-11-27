@@ -476,7 +476,7 @@ function metricsTable(obj, firstLabel) {
     const cols = [{ label: firstLabel, html: r => `<span class="mono">${esc(r._k)}</span>` },
       ...keys.map(k => ({ label: titleCase(k), html: r => fmtNum(r[k]), num: true }))];
     if (keys.includes("reads") && (keys.includes("parsed") || keys.includes("unparsed"))) {
-      cols.push({ label: "Parsed", num: true, html: r => {
+      cols.push({ label: "Parse rate", num: true, html: r => {
         const total = Number(r.reads) || 0, parsed = Number(r.parsed) || 0;
         return total ? pctBar(Math.round(parsed / total * 100)) : fmtNum(null);
       } });
@@ -528,6 +528,7 @@ $("#tabs").addEventListener("click", e => { if (e.target.dataset.tab) show(e.tar
 
 let saved = "overview";
 try { saved = localStorage.getItem("crowdsec-tab") || saved; } catch (_) {}
+if (loaders[location.hash.slice(1)]) saved = location.hash.slice(1);  // deep link, e.g. #decisions
 loadStatus();
 show(loaders[saved] ? saved : "overview");
 setInterval(() => { if (!document.hidden) { loadStatus(); if (["overview", "decisions", "alerts"].includes(state.tab)) loaders[state.tab](); } }, 30000);
