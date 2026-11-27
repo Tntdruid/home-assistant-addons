@@ -1,8 +1,8 @@
-name: "Crowdsec"
+name: "Crowdsec (Web UI test)"
 description: "CrowdSec - the open-source and participative IPS"
 url: "https://github.com/crowdsecurity/home-assistant-addons/blob/main/crowdsec/DOCS.md"
 version: "1.8.2-webui1"
-slug: "crowdsec"
+slug: "crowdsec_webui_test"
 init: false
 ingress: true
 ingress_port: 7681
